@@ -159,11 +159,6 @@ Edit `.env` with your credentials:
 # Required
 GOOGLE_API_KEY=your_gemini_api_key_here
 EE_PROJECT=your_gcp_project_id_here
-
-# Optional
-LLM_MODEL=gemini-2.5-flash
-DEFAULT_LAT=31.5204
-DEFAULT_LON=74.3587
 ```
 
 ### Step 5: Authenticate Earth Engine

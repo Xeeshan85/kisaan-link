@@ -249,78 +249,9 @@ with tab_chat:
         user_chat_entry = {"role": "user", "content": user_query}
         if image_to_show:
             user_chat_entry["image"] = image_to_show
-        st.session_state.chat_history.append(user_chat_entry)# MAIN AREA
-st.title("🌾 KisaanLink: AI Agronomist")
-st.markdown("Powered by **Gemini 2.5** & **Google Earth Engine**")
-
-tab_chat, tab_satellite, tab_weather, tab_prices = st.tabs([
-    "💬 Chat", "🛰️ Satellite View", "🌤️ Weather", "💰 Prices"
-])
-
-# TAB 1: CHAT
-with tab_chat:
-    # Display chat history
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message.get("image"):
-                st.image(message["image"], caption="Uploaded Crop Image", width=300)
-
-    # Image upload - store in session state immediately to persist across reruns
-    uploaded_file = st.file_uploader(
-        "📷 Upload crop image for disease diagnosis", 
-        type=['jpg', 'png', 'jpeg', 'webp'],
-        key=f"chat_image_upload_{st.session_state.uploader_key}",
-        label_visibility="collapsed"
-    )
-    
-    # CRITICAL: Store uploaded file in session state immediately
-    if uploaded_file is not None:
-        # Read file bytes and store in session state
-        st.session_state.pending_image = uploaded_file.getvalue()
-        st.session_state.pending_image_name = uploaded_file.name
-    
-    # Show uploaded image preview (from session state)
-    if st.session_state.pending_image:
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            st.image(st.session_state.pending_image, caption="Ready to analyze", width=150)
-        with col2:
-            st.info(f"� **{st.session_state.pending_image_name}** ready. Type your question below and press Enter.")
-
-    # Chat input at bottom
-    user_query = st.chat_input("Ask about farming, weather, prices, or upload an image above...")
-
-    # Auto-generate query if image uploaded but no text
-    if st.session_state.pending_image and not user_query:
-        pass  # Will be handled when user types something
-    
-    # Process when user submits a query OR has pending image with auto-analyze
-    if user_query or (st.session_state.pending_image and st.session_state.get("auto_analyze", False)):
-        image_path = None
-        image_to_show = None
-        image_analysis = None
-        
-        # Handle uploaded image FROM SESSION STATE (not from uploader directly)
-        if st.session_state.pending_image:
-            file_ext = os.path.splitext(st.session_state.pending_image_name)[1] or ".jpg"
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
-            temp_file.write(st.session_state.pending_image)
-            temp_file.close()
-            image_path = temp_file.name
-            image_to_show = st.session_state.pending_image
-            
-            # If no query provided, use default
-            if not user_query:
-                user_query = "Please analyze this crop image for diseases and provide treatment advice."
-
-        # Add user message to chat history
-        user_chat_entry = {"role": "user", "content": user_query}
-        if image_to_show:
-            user_chat_entry["image"] = image_to_show
         st.session_state.chat_history.append(user_chat_entry)
 
-        # Display user message
+        # Display user message in chat
         with st.chat_message("user"):
             st.markdown(user_query)
             if image_to_show:

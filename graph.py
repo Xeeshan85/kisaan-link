@@ -388,8 +388,23 @@ TOOLS (use ONLY when needed):
 - get_satellite_image(lat, lon): ONLY if user asks for satellite imagery
 - get_crop_health_ndvi(lat, lon, days): ONLY if user asks for NDVI/crop health from satellite
 
+IMPORTANT FOR LOCATION-BASED TOOLS (weather, satellite, NDVI):
+- If user mentions a specific city/place, use the coordinates for THAT location
+- Common coordinates:
+  * Austin, Texas: lat=30.2672, lon=-97.7431
+  * New York: lat=40.7128, lon=-74.0060
+  * London: lat=51.5074, lon=-0.1278
+  * Lahore: lat=31.5204, lon=74.3587
+  * Multan: lat=30.1575, lon=71.5249
+  * Faisalabad: lat=31.4504, lon=73.1350
+  * Karachi: lat=24.8607, lon=67.0011
+  * Islamabad: lat=33.6844, lon=73.0479
+- If user doesn't specify location, use default: lat={location['lat']}, lon={location['lon']}
+- NEVER use default coordinates when user explicitly mentions a different city!
+
 WHEN TO USE TOOLS:
-✅ "What's the weather in Multan?" -> get_agri_weather
+✅ "What's the weather in Multan?" -> get_agri_weather with Multan coords
+✅ "What's the weather in Austin Texas?" -> get_agri_weather with Austin coords (30.2672, -97.7431)
 ✅ "What's wheat price in Lahore?" -> check_mandi_prices
 ✅ "Show me satellite image" -> get_satellite_image
 ✅ "Check NDVI for my field" -> get_crop_health_ndvi
@@ -400,7 +415,6 @@ WHEN NOT TO USE TOOLS:
 ❌ "What fertilizer for wheat?" -> Answer from knowledge, NO tools
 ❌ Follow-up questions -> Usually NO tools unless specifically asking for new data
 
-DEFAULT: lat={location['lat']}, lon={location['lon']}, days={days}
 {f"CROP: {crop}" if crop else ""} {f"CITY: {city}" if city else ""}
 {f"CONTEXT:{chr(10)}{context}" if context else ""}{diagnosis_ctx}"""
 

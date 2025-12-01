@@ -12,7 +12,7 @@
 
 **An intelligent farming assistant for Pakistani farmers, powered by AI and satellite technology.**
 
-[Live Demo](#deployment) • [Features](#-features) • [Architecture](#-architecture) • [Setup](#-setup--installation) • [Usage](#-usage)
+[Live Demo](https://kisaanlink.streamlit.app/) • [Features](#-features) • [Architecture](#-architecture) • [Setup](#-setup--installation) • [Usage](#-usage)
 
 </div>
 

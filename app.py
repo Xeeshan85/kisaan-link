@@ -25,12 +25,53 @@ import os
 import tempfile
 import base64
 import plotly.graph_objects as go
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from graph import app, run_agent, DEFAULT_LOCATION, get_supported_languages, get_default_hyperparams, analyze_image_standalone
 from tools import get_satellite_image, get_crop_health_ndvi, get_agri_weather
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+def extract_text_content(message):
+    """
+    Extract text content from a LangChain message.
+    Handles various content formats:
+    - String content
+    - List of content blocks (multimodal)
+    - AIMessage with tool_calls
+    """
+    if message is None:
+        return ""
+    
+    # Get the content attribute
+    content = getattr(message, 'content', message)
+    
+    # If it's already a string, return it
+    if isinstance(content, str):
+        return content
+    
+    # If it's a list (multimodal content), extract text parts
+    if isinstance(content, list):
+        text_parts = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+            elif isinstance(item, dict) and item.get('type') == 'text':
+                text_parts.append(item.get('text', ''))
+        return '\n'.join(text_parts) if text_parts else str(content)
+    
+    # If it's a dict, try to get text or convert to string
+    if isinstance(content, dict):
+        if 'text' in content:
+            return content['text']
+        return str(content)
+    
+    # Fallback: convert to string
+    return str(content) if content else ""
+
 
 # =============================================================================
 # PAGE CONFIGURATION
@@ -175,7 +216,7 @@ if st.sidebar.button("🗑️ Clear All & Reset"):
 # MAIN CONTENT AREA
 # =============================================================================
 st.title("🌾 KisaanLink: AI Agronomist")
-st.markdown("Powered by **Gemini 2.5** & **Google Earth Engine**")
+st.markdown("Powered by **Gemini** & **Google Earth Engine**")
 
 # Four main tabs for different functionalities
 tab_chat, tab_satellite, tab_weather, tab_prices = st.tabs([
@@ -263,7 +304,7 @@ with tab_chat:
             try:
                 # STEP 1: If image exists, analyze it first (outside the graph)
                 if image_path and os.path.exists(image_path):
-                    with st.spinner("🔬 Step 1: Analyzing image..."):
+                    with st.spinner("🔬 Analyzing image..."):
                         image_analysis = analyze_image_standalone(
                             image_path=image_path,
                             language=st.session_state.language,
@@ -276,7 +317,7 @@ with tab_chat:
                                 st.markdown(image_analysis)
                 
                 # STEP 2: Send image analysis + user prompt to main agent
-                with st.spinner("🤖 Step 2: Processing your request..."):
+                with st.spinner("Processing your request..."):
                     # Build conversation context
                     conversation_context = ""
                     if st.session_state.conversation_messages:
@@ -330,7 +371,14 @@ Based on the previous analysis, please answer the user's question."""
                         for key, value in event.items():
                             agent_steps.append(f"✅ {key.replace('_', ' ').title()}")
                             if "messages" in value and value["messages"]:
-                                final_response = value["messages"][-1].content
+                                msg = value["messages"][-1]
+                                # Skip tool-call-only messages (no actual text content)
+                                if hasattr(msg, 'tool_calls') and msg.tool_calls and not getattr(msg, 'content', ''):
+                                    continue
+                                # Extract text content properly (handles multimodal/tool responses)
+                                extracted = extract_text_content(msg)
+                                if extracted and extracted.strip():
+                                    final_response = extracted
                             if "satellite_data" in value and value["satellite_data"]:
                                 st.session_state.satellite_data = value["satellite_data"]
                     

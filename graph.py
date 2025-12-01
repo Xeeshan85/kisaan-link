@@ -1,3 +1,35 @@
+"""
+KisaanLink - LangGraph Agent Orchestration
+==========================================
+
+This module implements the AI agent using LangGraph's StateGraph pattern.
+
+Architecture:
+- Uses a ReAct-style agent where the LLM decides when to call tools
+- Tool binding allows intelligent data fetching (only when relevant)
+- Multi-language support for Pakistani regional languages
+- Two-step image processing: standalone analysis + agent synthesis
+
+Graph Structure:
+    START → router_node → [pathologist | main_agent | settings_handler]
+                              ↓              ↓               ↓
+                     treatment_advisor   tools/END         END
+                              ↓              ↓
+                         tools/END      synthesize
+                              ↓              ↓
+                          synthesize       END
+                              ↓
+                             END
+
+Design Decisions:
+- router_node determines flow based on image_path presence
+- Tools are bound to LLM (not hardcoded rules)
+- MemorySaver enables conversation persistence via thread_id
+- Language instructions are injected into all prompts
+
+Author: KisaanLink Team
+"""
+
 import operator
 import os
 import mimetypes
@@ -18,15 +50,21 @@ from tools import get_agri_weather, check_mandi_prices, get_satellite_image, get
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Configuration ---
+# =============================================================================
+# CONFIGURATION - Environment variables and defaults
+# =============================================================================
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 DEFAULT_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 DEFAULT_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 DEFAULT_LOCATION = {
-    "lat": float(os.getenv("DEFAULT_LAT", "31.5204")),
+    "lat": float(os.getenv("DEFAULT_LAT", "31.5204")),  # Lahore, Pakistan
     "lon": float(os.getenv("DEFAULT_LON", "74.3587"))
 }
 
+# =============================================================================
+# MULTI-LANGUAGE SUPPORT - 5 Pakistani regional languages
+# =============================================================================
+# Each language has: name (for display), instruction (for LLM), greeting (first message)
 SUPPORTED_LANGUAGES = {
     "english": {
         "name": "English",
@@ -55,18 +93,41 @@ SUPPORTED_LANGUAGES = {
     }
 }
 
+# Default hyperparameters for the agent
 DEFAULT_HYPERPARAMS = {
-    "history_days": 30,
-    "max_context_messages": 10,
-    "temperature": 0.0,
-    "language": "english",
+    "history_days": 30,           # Days of historical data for weather/NDVI
+    "max_context_messages": 10,   # Max messages to include in context
+    "temperature": 0.0,           # LLM temperature (0 = deterministic)
+    "language": "english",        # Default response language
 }
 
-# Tools available to the agent - LLM decides when to use them
+# =============================================================================
+# TOOL REGISTRY - Tools available to the agent
+# =============================================================================
+# The LLM decides when to call these tools based on user's query
+# This is the ReAct pattern - no hardcoded rules for when to fetch data
 AGENT_TOOLS = [get_agri_weather, check_mandi_prices, get_satellite_image, get_crop_health_ndvi]
 
 
+# =============================================================================
+# STATE SCHEMA - TypedDict defining the state structure
+# =============================================================================
 class AgentState(TypedDict):
+    """
+    State schema for the LangGraph agent.
+    
+    Attributes:
+        messages: Conversation history (uses operator.add for accumulation)
+        image_path: Path to uploaded image (if any)
+        diagnosis: Result from image analysis
+        location: {lat, lon} for satellite/weather queries
+        crop_name: User's specified crop
+        city: User's city for market prices
+        satellite_data: Cached satellite imagery data
+        language: Response language code
+        history_days: Days of historical data to fetch
+        temperature: LLM creativity parameter
+    """
     messages: Annotated[List[Union[HumanMessage, AIMessage, SystemMessage, ToolMessage]], operator.add]
     image_path: Optional[str]
     diagnosis: Optional[str]

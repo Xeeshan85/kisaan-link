@@ -1,3 +1,26 @@
+"""
+KisaanLink - External Data Tools
+================================
+
+This module provides LangChain tools for fetching external agricultural data.
+
+Data Sources:
+1. Google Earth Engine (Sentinel-2): High-resolution satellite imagery
+2. Google Earth Engine (ERA5-Land): Climate/weather data
+3. AMIS Pakistan (amis.pk): Official Mandi prices
+4. DuckDuckGo Search: Fallback for market prices
+
+Design Decisions:
+- Tools are decorated with @tool for LangChain compatibility
+- Earth Engine uses high-volume endpoint for better performance
+- buffer_meters parameter allows customizable area selection
+- Graceful fallbacks when primary sources fail
+
+Note: Earth Engine requires authentication via `earthengine authenticate`
+
+Author: KisaanLink Team
+"""
+
 import os
 import logging
 from datetime import datetime, timedelta
@@ -6,20 +29,27 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from dotenv import load_dotenv
 import ee
 
-# Load environment variables
 load_dotenv()
 
-# Setup logging
+# Setup logging for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get Earth Engine project from environment
+# =============================================================================
+# EARTH ENGINE INITIALIZATION
+# =============================================================================
+# Earth Engine requires a Google Cloud project with the API enabled
 EE_PROJECT = os.getenv("EE_PROJECT", None)
 EE_INITIALIZED = False
 
-# Initialize Earth Engine
+
 def _init_earth_engine():
-    """Initialize Earth Engine with proper authentication"""
+    """
+    Initialize Google Earth Engine with proper authentication.
+    
+    Uses high-volume endpoint for better performance in production.
+    Falls back gracefully if authentication fails.
+    """
     global EE_INITIALIZED
     
     logger.info("=" * 50)
@@ -28,6 +58,7 @@ def _init_earth_engine():
     logger.info(f"   EE_PROJECT env var: {EE_PROJECT or 'NOT SET'}")
     
     try:
+        # Use high-volume endpoint for production workloads
         if EE_PROJECT:
             ee.Initialize(project=EE_PROJECT, opt_url='https://earthengine-highvolume.googleapis.com')
             logger.info(f"   ✅ Earth Engine initialized with project: {EE_PROJECT}")
@@ -35,7 +66,7 @@ def _init_earth_engine():
             ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com')
             logger.info("   ✅ Earth Engine initialized (default project)")
         
-        # Verify connection by making a simple request
+        # Verify connection with a simple test
         test = ee.Number(1).getInfo()
         logger.info(f"   ✅ Earth Engine connection verified (test={test})")
         EE_INITIALIZED = True
@@ -51,20 +82,27 @@ def _init_earth_engine():
     
     logger.info("=" * 50)
 
+
+# Initialize Earth Engine on module load
 _init_earth_engine()
 
 
 def _check_ee_initialized():
-    """Check if Earth Engine is initialized before using it"""
+    """Guard function to check Earth Engine status before API calls."""
     if not EE_INITIALIZED:
         return False, "Earth Engine not initialized. Please check your configuration."
     return True, None
 
-# --- Constants ---
-DEFAULT_LOOKBACK_DAYS = 30  # Days to fetch for weather analysis
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+DEFAULT_LOOKBACK_DAYS = 30  # Default days for weather/NDVI analysis
 
 
-# --- 1. Earth Engine Satellite Image Tool ---
+# =============================================================================
+# TOOL 1: SATELLITE IMAGERY (Sentinel-2)
+# =============================================================================
 @tool
 def get_satellite_image(lat: float, lon: float, start_date: str = None, end_date: str = None, buffer_meters: int = 500):
     """

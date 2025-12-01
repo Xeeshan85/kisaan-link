@@ -1,3 +1,24 @@
+"""
+KisaanLink - AI-Powered Agricultural Assistant
+==============================================
+
+This is the main Streamlit frontend application for KisaanLink.
+
+Architecture Overview:
+- Uses a two-step flow for image processing:
+  1. Image → analyze_image_standalone() → Diagnosis
+  2. Diagnosis + User Query → LangGraph Agent → Response
+- Session state manages conversation memory and pending uploads
+- Four tabs: Chat, Satellite, Weather, Prices
+
+Design Decisions:
+- pending_image stored in session_state to survive Streamlit reruns
+- uploader_key counter resets file uploader after each submission (one-time use)
+- last_diagnosis enables follow-up questions without re-uploading
+
+Author: KisaanLink Team
+"""
+
 import streamlit as st
 import uuid
 import os
@@ -11,7 +32,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Page config
+# =============================================================================
+# PAGE CONFIGURATION
+# =============================================================================
 st.set_page_config(
     page_title="KisaanLink - AI Agronomist", 
     page_icon="🌾",
@@ -19,49 +42,74 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load supported languages and defaults
+# Load supported languages and default hyperparameters from graph.py
 LANGUAGES = get_supported_languages()
 DEFAULTS = get_default_hyperparams()
 
-# Session State initialization
+# =============================================================================
+# SESSION STATE INITIALIZATION
+# =============================================================================
+# Each session state variable serves a specific purpose:
+
+# thread_id: Unique identifier for LangGraph memory/checkpointing
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
+
+# chat_history: Displayed messages in the chat UI (includes images)
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+# conversation_messages: Text-only messages for context building
 if "conversation_messages" not in st.session_state:
     st.session_state.conversation_messages = []
+
+# language: User's selected language for responses
 if "language" not in st.session_state:
     st.session_state.language = "english"
+
+# history_days: Number of days for weather/satellite data analysis
 if "history_days" not in st.session_state:
     st.session_state.history_days = DEFAULTS["history_days"]
+
+# temperature: LLM creativity parameter (0 = deterministic, 1 = creative)
 if "temperature" not in st.session_state:
     st.session_state.temperature = DEFAULTS["temperature"]
+
+# Cached data from external APIs (avoid re-fetching)
 if "satellite_data" not in st.session_state:
     st.session_state.satellite_data = None
 if "weather_data" not in st.session_state:
     st.session_state.weather_data = None
 if "ndvi_data" not in st.session_state:
     st.session_state.ndvi_data = None
-# Store last diagnosis in memory so user doesn't need to re-upload
+
+# Diagnosis memory: Allows follow-up questions without re-uploading image
 if "last_diagnosis" not in st.session_state:
     st.session_state.last_diagnosis = None
 if "last_image_description" not in st.session_state:
     st.session_state.last_image_description = None
-# Counter to reset file uploader after each use
+
+# Image upload handling:
+# - uploader_key: Incremented after each submission to reset the file uploader
+# - pending_image: Stores image bytes to survive Streamlit reruns
+# - pending_image_name: Original filename for extension detection
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
-# Store uploaded image in session state to persist across reruns
 if "pending_image" not in st.session_state:
     st.session_state.pending_image = None
 if "pending_image_name" not in st.session_state:
     st.session_state.pending_image_name = None
 
+# LangGraph configuration for memory/checkpointing
 thread_id = st.session_state.thread_id
 config = {"configurable": {"thread_id": thread_id}}
 
-# SIDEBAR - Settings only (no image upload)
+# =============================================================================
+# SIDEBAR - User Settings & Configuration
+# =============================================================================
 st.sidebar.title("⚙️ Settings")
 
+# Language Selection - Supports 5 regional languages
 st.sidebar.header("🌐 Language / زبان")
 language_options = {key: info["name"] for key, info in LANGUAGES.items()}
 selected_language = st.sidebar.selectbox(
@@ -75,6 +123,7 @@ st.session_state.language = selected_language
 greeting = LANGUAGES[selected_language]["greeting"]
 st.sidebar.info(f"💬 {greeting}")
 
+# Analysis Settings - Control data fetching behavior
 st.sidebar.header("🎛️ Analysis Settings")
 history_days = st.sidebar.slider("📅 Days of History", 7, 90, st.session_state.history_days, 7)
 st.session_state.history_days = history_days
@@ -82,9 +131,10 @@ st.session_state.history_days = history_days
 temperature = st.sidebar.slider("🌡️ AI Creativity", 0.0, 1.0, st.session_state.temperature, 0.1)
 st.session_state.temperature = temperature
 
-# Note: Data sources are now intelligently selected by the AI agent
+# Inform user about intelligent data fetching
 st.sidebar.info("💡 The AI agent automatically decides when to fetch weather, satellite, or market data based on your question.")
 
+# Location Settings - For satellite imagery and weather data
 st.sidebar.header("📍 Location")
 use_custom_location = st.sidebar.checkbox("Use Custom Location", value=False)
 if use_custom_location:
@@ -95,11 +145,12 @@ else:
     location = DEFAULT_LOCATION
     st.sidebar.caption(f"📍 Default: Lahore ({DEFAULT_LOCATION['lat']:.2f}, {DEFAULT_LOCATION['lon']:.2f})")
 
+# Crop & Market Settings - Used for price lookups
 st.sidebar.header("🌿 Crop & Market")
 crop_name = st.sidebar.text_input("Crop Name", placeholder="e.g., Wheat, Rice")
 city = st.sidebar.text_input("City/Mandi", placeholder="e.g., Lahore, Multan")
 
-# Show stored diagnosis info if available
+# Show stored diagnosis info if available (enables follow-up questions)
 if st.session_state.last_diagnosis:
     st.sidebar.header("🔬 Last Diagnosis")
     st.sidebar.success("✅ Diagnosis stored in memory")
@@ -108,6 +159,7 @@ if st.session_state.last_diagnosis:
         st.session_state.last_image_description = None
         st.rerun()
 
+# Reset button - Clears all session state and starts fresh
 if st.sidebar.button("🗑️ Clear All & Reset"):
     st.session_state.chat_history = []
     st.session_state.conversation_messages = []
@@ -119,7 +171,85 @@ if st.sidebar.button("🗑️ Clear All & Reset"):
     st.session_state.last_image_description = None
     st.rerun()
 
-# MAIN AREA
+# =============================================================================
+# MAIN CONTENT AREA
+# =============================================================================
+st.title("🌾 KisaanLink: AI Agronomist")
+st.markdown("Powered by **Gemini 2.5** & **Google Earth Engine**")
+
+# Four main tabs for different functionalities
+tab_chat, tab_satellite, tab_weather, tab_prices = st.tabs([
+    "💬 Chat", "🛰️ Satellite View", "🌤️ Weather", "💰 Prices"
+])
+
+# =============================================================================
+# TAB 1: CHAT - Main conversational interface
+# =============================================================================
+with tab_chat:
+    # Display existing chat history with images
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("image"):
+                st.image(message["image"], caption="Uploaded Crop Image", width=300)
+
+    # Image upload widget
+    # Design: Uses dynamic key to reset after each submission (one-time image use)
+    uploaded_file = st.file_uploader(
+        "📷 Upload crop image for disease diagnosis", 
+        type=['jpg', 'png', 'jpeg', 'webp'],
+        key=f"chat_image_upload_{st.session_state.uploader_key}",
+        label_visibility="collapsed"
+    )
+    
+    # CRITICAL: Store uploaded file bytes immediately in session state
+    # This ensures the image survives Streamlit's rerun cycle when user presses Enter
+    if uploaded_file is not None:
+        st.session_state.pending_image = uploaded_file.getvalue()
+        st.session_state.pending_image_name = uploaded_file.name
+    
+    # Show preview of pending image
+    if st.session_state.pending_image:
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.image(st.session_state.pending_image, caption="Ready to analyze", width=150)
+        with col2:
+            st.info(f"📷 **{st.session_state.pending_image_name}** ready. Type your question below and press Enter.")
+
+    # Chat input - Primary interaction method
+    user_query = st.chat_input("Ask about farming, weather, prices, or upload an image above...")
+
+    # Placeholder for future auto-analyze feature
+    if st.session_state.pending_image and not user_query:
+        pass  # Will be handled when user types something
+    
+    
+    # ==========================================================================
+    # MAIN PROCESSING LOGIC - Two-Step Image Flow
+    # ==========================================================================
+    if user_query or (st.session_state.pending_image and st.session_state.get("auto_analyze", False)):
+        image_path = None
+        image_to_show = None
+        image_analysis = None
+        
+        # Handle uploaded image FROM SESSION STATE (not from uploader directly)
+        if st.session_state.pending_image:
+            file_ext = os.path.splitext(st.session_state.pending_image_name)[1] or ".jpg"
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
+            temp_file.write(st.session_state.pending_image)
+            temp_file.close()
+            image_path = temp_file.name
+            image_to_show = st.session_state.pending_image
+            
+            # If no query provided, use default
+            if not user_query:
+                user_query = "Please analyze this crop image for diseases and provide treatment advice."
+
+        # Add user message to chat history
+        user_chat_entry = {"role": "user", "content": user_query}
+        if image_to_show:
+            user_chat_entry["image"] = image_to_show
+        st.session_state.chat_history.append(user_chat_entry)# MAIN AREA
 st.title("🌾 KisaanLink: AI Agronomist")
 st.markdown("Powered by **Gemini 2.5** & **Google Earth Engine**")
 

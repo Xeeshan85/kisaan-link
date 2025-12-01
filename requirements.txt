@@ -1,0 +1,30 @@
+# LangChain & LangGraph
+langgraph>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+
+# Google Earth Engine
+earthengine-api>=1.1.0
+
+# FastAPI Backend
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+
+# Streamlit Frontend
+streamlit>=1.30.0
+plotly>=5.18.0
+
+# Web Scraping (for AMIS Pakistan prices)
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# Search
+duckduckgo-search>=6.0.0
+
+# Environment
+python-dotenv>=1.0.0
+pillow>=10.0.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
